@@ -1,7 +1,7 @@
 import numpy as np
 from perceptron import Perceptron
 from linreg import LinearRegression
-from mlp import MultiLayerPerceptron
+from mlp import MultiLayerPerceptron, MultiLayerPerceptron2
 from TestInputs import *
 
 if __name__ == "__main__":
@@ -20,8 +20,15 @@ if __name__ == "__main__":
     print("")
 
     print("===Multi Layer Perceptron Test===")
-    mlp = MultiLayerPerceptron(XOR3D().inputs, XOR3D().targets,2)
+    mlp = MultiLayerPerceptron(XOR3D().inputs, XOR3D().targets)
     mlp.train(0.25, 1001)
     print(mlp.get_train_outputs())
+    mlp.conf_mat()
+    print("")
+
+    print("===Multi Layer Perceptron Test2===")
+    mlp = MultiLayerPerceptron2(XOR3D().inputs, XOR3D().targets)
+    mlp.train(0.25, 1001)
+    #print(mlp.get_train_outputs())
     mlp.conf_mat()
     print("")

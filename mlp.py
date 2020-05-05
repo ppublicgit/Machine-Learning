@@ -14,7 +14,7 @@ def linear(h):
     return h
 
 class MultiLayerPerceptron:
-    def __init__(self, inputs, targets, nHidden, beta=1, momentum=0.9, outtype="logistic"):
+    def __init__(self, inputs, targets, nHidden=4, beta=1, momentum=0.9, outtype="logistic"):
         self.inputs = inputs
         if len(np.shape(targets)) < 2:
             self.targets = targets.reshape((np.shape(targets)[0], 1))
@@ -30,6 +30,7 @@ class MultiLayerPerceptron:
         self.momentum = momentum
         self.outtype = outtype
 
+        np.random.seed(0)
         self.weights1 = (np.random.rand(self.nIn+1, self.nHidden)-0.5)*2/np.sqrt(self.nIn)
         self.weights2 = (np.random.rand(self.nHidden+1, self.nOut)-0.5)*2/np.sqrt(self.nHidden)
 
@@ -54,7 +55,6 @@ class MultiLayerPerceptron:
                 deltao = self.beta*(outputs-self.targets)*outputs*(1.0-outputs)
             else:
                 raise ValueError("Invalid outtype")
-            breakpoint()
             deltah = self.hidden*self.beta*(1.0-self.hidden)*(np.dot(deltao, np.transpose(self.weights2)))
             updatew1 = eta*(np.dot(np.transpose(inputs), deltah[:,:-1])) + self.momentum*updatew1
             updatew2 = eta*(np.dot(np.transpose(self.hidden), deltao)) + self.momentum*updatew2
@@ -105,7 +105,7 @@ class MultiLayerPerceptron:
 
 
 class MultiLayerPerceptron2:
-    def __init__(self, inputs, targets, nHidden=4, beta=1.0):
+    def __init__(self, inputs, targets, nHidden=4, beta=1.0, momentum=0.9):
         # initialize inputs and targets
         try:
             inputs = np.array(inputs)
@@ -115,7 +115,7 @@ class MultiLayerPerceptron2:
             self.inputs = inputs.reshape(np.shape(inputs)[0], 1)
         else:
             try:
-                self.inputs = np.array([self.nparray(nested) for nested in inputs])
+                self.inputs = np.array([np.array(nested) for nested in inputs])
             except:
                 raise ValueError("inputs arg must be a numpy array or numpy array-able")
         try:
@@ -136,6 +136,8 @@ class MultiLayerPerceptron2:
         # initalize weights
         nIn = np.shape(self.inputs)[1]
         nOut = np.shape(self.targets)[1]
+
+        np.random.seed(0)
         self.weights_inputs = (np.random.rand(nIn, nHidden)-0.5)*2/np.sqrt(nIn)
         self.weights_hidden = (np.random.rand(nHidden, nOut)-0.5)*2/np.sqrt(nOut)
 
@@ -145,23 +147,64 @@ class MultiLayerPerceptron2:
 
         if float(beta) <=0:
             raise ValueError("Beta must be greater than 0")
-        self.beta = beta
+        self.beta = float(beta)
+        if float(momentum) <0 or float(momentum) > 1:
+            raise ValueError("Momentum must be between 0 and 1")
+        self.momentum = float(momentum)
+
+        self.hidden = None
 
     def train(self, eta, nIterations):
         inputs = self.inputs
         update_weights_inputs = np.zeros_like(self.weights_inputs)
         update_weights_hidden = np.zeros_like(self.weights_hidden)
-        for i in range(nIterations):
+        for n in range(nIterations):
             outputs = self.forward(inputs)
             error = np.sum((outputs-self.targets)**2)
             if (np.mod(n,100)==0):
                 print(f"Iteration: {n}\tError: {error}")
 
-            delta_output = 2*self.beta*(outputs-self.targets)*outputs*(1.0-outputs)
-            delta_hidden =
+            delta_output = self.beta*(outputs-self.targets)*outputs*(1.0-outputs)
+            delta_hidden = np.dot(delta_output, np.transpose(self.weights_hidden))*(self.hidden * self.beta * (1-self.hidden))
+
+            update_weights_inputs = eta * np.dot(np.transpose(self.inputs), delta_hidden) + self.momentum*update_weights_inputs
+            update_weights_hidden = eta * np.dot(np.transpose(self.hidden), delta_output) + self.momentum*update_weights_hidden
+
+            self.weights_inputs -= update_weights_inputs
+            self.weights_hidden -= update_weights_hidden
+
+            self.bias_inputs -= eta*delta_hidden
+            self.bias_hidden -= eta*delta_output
 
 
     def forward(self, inputs):
-
-
+        sigmoid_input = np.dot(self.inputs, self.weights_inputs)
+        self.hidden = sigmoid(sigmoid_input+self.bias_inputs, self.beta)
+        sigmoid_hidden = np.dot(self.hidden, self.weights_hidden)
+        outputs = sigmoid(sigmoid_hidden+self.bias_hidden, self.beta)
         return outputs
+
+    def conf_mat(self):
+       """Confusion matrix"""
+
+       # Add the inputs that match the bias node
+       outputs = self.forward(self.inputs)
+
+       nclasses = np.shape(self.targets)[1]
+
+       if nclasses==1:
+           nclasses = 2
+           outputs = np.where(outputs>0.5,1,0)
+       else:
+           # 1-of-N encoding
+           outputs = np.argmax(outputs,1)
+           targets = np.argmax(targets,1)
+
+       cm = np.zeros((nclasses,nclasses))
+       for i in range(nclasses):
+           for j in range(nclasses):
+               cm[i,j] = np.sum(np.where(outputs==i,1,0)*np.where(self.targets==j,1,0))
+
+       print("Confusion matrix is:")
+       print(cm)
+       print(f"Percentage Correct: {np.trace(cm)/np.sum(cm)*100}")

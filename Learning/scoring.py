@@ -21,3 +21,4 @@ def conf_mat(predictions, targets):
         print("Confusion matrix is:")
         print(cm)
         print(f"Percentage Correct: {np.trace(cm)/np.sum(cm)*100}")
+        return cm

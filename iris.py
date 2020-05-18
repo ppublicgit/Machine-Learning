@@ -75,7 +75,7 @@ def run_mlp(inputs, targets, nRuns=5):
         x_in, x_out, v_in, v_out, y_in, y_out = separate_data(x, y, True)
         start = time()
         forward = mlp(x_in, x_out,
-                      valid_inputs=v_in, valid_targets=v_out, validate=True,
+                      valid_inputs=v_in, valid_targets=v_out, train_type="validate",
                       outtype="softmax", eta=0.1, nHidden=5,
                       valid_iterations=100)
         predict = forward(y_in)
@@ -86,6 +86,22 @@ def run_mlp(inputs, targets, nRuns=5):
 
     return total_time/nRuns, total_percent/nRuns
 
+def run_mlp_conj_grad(inputs, targets, nRuns=5):
+    total_time, total_percent = 0, 0
+    for i in range(nRuns):
+        x, y = shuffle_data(inputs, targets, True, i)
+        x_in, x_out, y_in, y_out = separate_data(x, y, False)
+        start = time()
+        forward = mlp(x_in, x_out,
+                      train_type="conj_grad",
+                      outtype="softmax", nHidden=5)
+        predict = forward(y_in)
+        total_time += time() - start
+
+        cm = conf_mat(predict, y_out)
+        total_percent += np.trace(cm)/np.sum(cm)*100
+
+    return total_time/nRuns, total_percent/nRuns
 
 def run_rbf_pcn(inputs, targets, nRuns=5):
     total_time, total_percent = 0, 0
@@ -176,39 +192,46 @@ def run_knn(inputs, targets, nRuns=5):
 if __name__ == "__main__":
     iris, targets = read_data()
 
-    mlp_time, mlp_percent = run_mlp(iris, targets)
-
-    rbf_pcn_time, rbf_pcn_percent = run_rbf_pcn(iris, targets)
-
-    rbf_wtm_time, rbf_wtm_percent = run_rbf_wtm(iris, targets)
-
-    svm_time, svm_percent = run_svm(iris, targets)
-
-    knn_time, knn_percent = run_knn(iris, targets)
-
-    #=================== Print Results =====================#
-    print("\n======== SCORING =========\n")
-    print("===== MLP Predictions =====")
-    print(f"Percentage Correct: {mlp_percent}")
-    print(f"Learning Time: {mlp_time}")
+#    mlp_time, mlp_percent = run_mlp(iris, targets)
+#
+    mlp_conj_grad_time, mlp_conj_grad_percent = run_mlp_conj_grad(iris, targets)
+#
+#    rbf_pcn_time, rbf_pcn_percent = run_rbf_pcn(iris, targets)
+#
+#    rbf_wtm_time, rbf_wtm_percent = run_rbf_wtm(iris, targets)
+#
+#    svm_time, svm_percent = run_svm(iris, targets)
+#
+#    knn_time, knn_percent = run_knn(iris, targets)
+#
+#    #=================== Print Results =====================#
+#    print("\n======== SCORING =========\n")
+#    print("===== MLP Predictions =====")
+#    print(f"Percentage Correct: {mlp_percent}")
+#    print(f"Learning Time: {mlp_time}")
+#    print("")
+#
+    print("===== MLP Conj. Grad. Predictions =====")
+    print(f"Percentage Correct: {mlp_conj_grad_percent}")
+    print(f"Learning Time: {mlp_conj_grad_time}")
     print("")
-
-    print("===== RBF PCN Predictions =====")
-    print(f"Percentage Correct: {rbf_pcn_percent}")
-    print(f"Learning Time: {rbf_pcn_time}")
-    print("")
-
-    print("===== RBF WTM Predictions =====")
-    print(f"Percentage Correct: {rbf_wtm_percent}")
-    print(f"Learning Time: {rbf_wtm_time}")
-    print("")
-
-    print("===== SVM Predictions =====")
-    print(f"Percentage Correct: {svm_percent}")
-    print(f"Learning Time: {svm_time}")
-    print("")
-
-    print("===== KNN Predictions =====")
-    print(f"Percentage Correct: {knn_percent}")
-    print(f"Learning Time: {knn_time}")
-    print("")
+#
+#    print("===== RBF PCN Predictions =====")
+#    print(f"Percentage Correct: {rbf_pcn_percent}")
+#    print(f"Learning Time: {rbf_pcn_time}")
+#    print("")
+#
+#    print("===== RBF WTM Predictions =====")
+#    print(f"Percentage Correct: {rbf_wtm_percent}")
+#    print(f"Learning Time: {rbf_wtm_time}")
+#    print("")
+#
+#    print("===== SVM Predictions =====")
+#    print(f"Percentage Correct: {svm_percent}")
+#    print(f"Learning Time: {svm_time}")
+#    print("")
+#
+#    print("===== KNN Predictions =====")
+#    print(f"Percentage Correct: {knn_percent}")
+#    print(f"Learning Time: {knn_time}")
+#    print("")

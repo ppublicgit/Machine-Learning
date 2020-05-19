@@ -7,7 +7,7 @@ if __name__ == "__main__":
 
     pop_knapsack = ga(20, knapsack, 301, plot=True, subtitle="Knapsack")
 
-    num_colours, map_shape = 3, (5, 5)
+    num_colours, map_shape = 2, (5, 5)
     pop_colour_map = ga(25, map_colour, 301, \
                         colour_map=True, num_colours=num_colours, map_shape=map_shape, \
                         plot=True, subtitle="Colour Map")

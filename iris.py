@@ -10,7 +10,7 @@ from Learning.mlp import mlp
 from Learning.rbf import rbf
 from Learning.svm import svm
 from Learning.probabilistic_learning import knn
-
+from Learning.decision_trees import dtree
 
 def read_data():
     df = pd.read_csv(os.path.join(os.getcwd(), "Data/iris.data"), header=None)
@@ -37,7 +37,7 @@ def shuffle_data(inputs, target, reseed=False, seed=42):
     if reseed:
         np.random.seed(seed)
 
-    order = [*range(np.shape(iris)[0])]
+    order = [*range(np.shape(inputs)[0])]
     np.random.shuffle(order)
     inputs = inputs[order, :]
     target = target[order, :]
@@ -172,6 +172,53 @@ def run_knn(inputs, targets, nRuns=5):
 
     return total_time/nRuns, total_percent/nRuns
 
+def run_dtree(inputs, targets, features, nRuns=5):
+    total_time, total_percent = 0, 0
+    #classes = [None] * len(targets)
+    classes = np.empty((len(targets), 1), dtype=int)
+    for i in range(len(targets)):
+        if targets[i][0] == 1:
+            classes[i] = 0#"Setosa"
+        elif targets[i][1] == 1:
+            classes[i] = 1#"Versicolour"
+        else:
+            classes[i] = 2#"Virginica"
+    #classes = np.array(classes).reshape(len(targets), 1)
+    for i in range(nRuns):
+        x, y = shuffle_data(inputs, classes, True, i)
+        x_in, x_out, y_in, y_out = separate_data(x, y, False)
+
+        x_out, y_out = x_out[:,0], y_out[:, 0]
+
+        start = time()
+        decisionTree = dtree(x_in, x_out, features, maxlevel=1)
+
+        predict = np.empty((len(y_out), 1), dtype=int)
+        for idx, val in enumerate(y_in):
+            predict[idx] = decisionTree(val)
+        total_time += time() - start
+
+        oneHotPredict = np.empty((len(y_out), 3), dtype=int)
+        oneHotYout = np.empty((len(y_out), 3), dtype=int)
+        for i in range(len(predict)):
+            if predict[i] == 0:
+                oneHotPredict[i] = [1, 0, 0]
+            elif predict[i] == 1:
+                oneHotPredict[i] = [0, 1, 0]
+            else:
+                oneHotPredict[i] = [0, 0, 1]
+            if y_out[i] == 0:
+                oneHotYout[i] = [1, 0, 0]
+            elif y_out[i] == 1:
+                oneHotYout[i] = [0, 1, 0]
+            else:
+                oneHotYout[i] = [0, 0, 1]
+
+        cm = conf_mat(oneHotPredict, oneHotYout)
+        total_percent += np.trace(cm)/np.sum(cm)*100
+
+    return total_time/nRuns, total_percent/nRuns
+
 
 if __name__ == "__main__":
     iris, targets = read_data()
@@ -185,6 +232,10 @@ if __name__ == "__main__":
     svm_time, svm_percent = run_svm(iris, targets)
 
     knn_time, knn_percent = run_knn(iris, targets)
+
+    dtree_time, dtree_percent = run_dtree(iris, targets, \
+                                          ["SepalLength", "SepalWidth", \
+                                           "PetalLength", "PetalWidth"])
 
     #=================== Print Results =====================#
     print("\n======== SCORING =========\n")
@@ -211,4 +262,9 @@ if __name__ == "__main__":
     print("===== KNN Predictions =====")
     print(f"Percentage Correct: {knn_percent}")
     print(f"Learning Time: {knn_time}")
+    print("")
+
+    print("===== DTREE Predictions =====")
+    print(f"Percentage Correct: {dtree_percent}")
+    print(f"Learning Time: {dtree_time}")
     print("")

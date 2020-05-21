@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from Learning.decision_trees import dtree, dDTtree
+from Learning.decision_trees import dtree
 
 
 if __name__ == "__main__":
@@ -12,12 +12,8 @@ if __name__ == "__main__":
     targets = df.iloc[:,-1].values
     data = df.iloc[:, :-1].to_numpy()
 
-    classify = dDTtree(data, targets, features)
+    classify = dtree(data, targets, features)
 
     datapoint = ["Urgent", "Yes", "No"]
 
     print(f"New: {classify(datapoint)}")
-
-    print(f"Input Data: ")
-    for i in range(data.shape[0]):
-        print(classify(data[i]))

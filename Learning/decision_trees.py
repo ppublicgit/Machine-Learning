@@ -1,6 +1,16 @@
 import numpy as np
-import toolz as tl
 
+def floatGE(left, right, epsilon=1e-5):
+    if left + epsilon >= right:
+        return True
+    else:
+        return False
+
+def floatLT(left, right, epsilon=1e-5):
+    if left < right + epsilon:
+        return True
+    else:
+        return False
 
 class DecisionTree:
     def __init__(self, key, subtrees=[]):
@@ -35,27 +45,36 @@ class DecisionTree:
             return True
         return False
 
-    def _index(self, key):
-        for idx, val in enumerate(self.subtrees):
-            if val.key == key:
-                return idx
+    def _index(self, path, discrete=True):
+        if discrete:
+            for idx, val in enumerate(self.subtrees):
+                if val.key == path:
+                    return idx
+        else:
+            for idx, val in enumerate(self.subtrees):
+                if val.key[0] == "<" and floatLT(path, float(val.key[1:])):
+                    return idx
+                elif val.key[0] == ">" and floatGE(path, float(val.key[2:])):
+                    return idx
         raise ValueError(f"Key {key} not in subtrees")
 
     def keys(self):
         return [st.key for st in self.subtrees]
 
-    def subtree(self, key):
-        if key not in self.keys():
-            return None
-        return self.subtrees[self._index(key)].subtrees[0]
+    def subtree(self, path):
+        if isinstance(path, str):
+            if path not in self.keys():
+                return None
+            return self.subtrees[self._index(path, True)].subtrees[0]
+        else:
+            return self.subtrees[self._index(path, False)].subtrees[0]
 
-def dDTtree(data, targets, features, **kwargs):
+def dtree(data, targets, features, **kwargs):
     def classify(tree, datapoint):
-        nonlocal featureNames
         if tree is None:
             return None
         elif tree.isLeaf():
-            return tree
+            return tree.key
         else:
             for idx, feature in enumerate(featureNames):
                 if feature == tree.key:
@@ -72,14 +91,15 @@ def dDTtree(data, targets, features, **kwargs):
 
     def make_tree(data, classes, featureNames, maxlevel=-1, level=0, forest=0):
         """ The main function, which recursively constructs the tree"""
+        if len(data) == 0:
+            return DecisionTree(None, [])
         nData = len(data)
         nFeatures = len(data[0])
         newClasses = [*set(classes)]
         frequency = np.zeros(len(newClasses))
         totalEntropy, totalGini = 0, 0
-
         for i in range(len(newClasses)):
-            frequency[i] = count(classes, newClasses)#classes.count(newClasses[i])
+            frequency[i] = count(classes, newClasses[i])#classes.count(newClasses[i])
             totalEntropy += calc_entropy(float(frequency[i])/nData)
             totalGini += (float(frequency[i])/nData)**2
         totalGini = 1 - totalGini
@@ -90,33 +110,54 @@ def dDTtree(data, targets, features, **kwargs):
             return DecisionTree(classes[0], [])
         else:
             # Choose which feature is best
-            gain, ggain = np.zeros(nFeatures), np.zeros(nFeatures)
+            gain, ggain, cutoffPoints = np.zeros(nFeatures), np.zeros(nFeatures), np.zeros(nFeatures)
             featureSet = [*range(nFeatures)]
             if forest != 0:
                 np.random.shuffle(featureSet)
                 featureSet = featureSet[0:forest]
             for featureIndex in featureSet:
-                g, gg = calc_info_gain(data, classes, featureIndex)
+                if isinstance(data[0][featureIndex], str):
+                    cutoffPoint = None
+                else:
+                    cutoffPoint = get_cutoff_point(data, classes, featureIndex)
+                g, gg = calc_info_gain(data, classes, featureIndex, cutoffPoint)
                 gain[featureIndex] = totalEntropy - g
                 ggain[featureIndex] = totalGini - gg
+                cutoffPoints[featureIndex] = cutoffPoint
             bestFeature = np.argmax(gain)
+            if isinstance(data[0][featureIndex], str):
+                values = [*set([datapoint[bestFeature] for datapoint in data])]
+            else:
+                values = [">=" + str(cutoffPoints[bestFeature]), "<" + str(cutoffPoints[bestFeature])]
             tree = DecisionTree(featureNames[bestFeature], [])
             # List the values that bestFeature can take
-            values = [*set([datapoint[bestFeature] for datapoint in data])]
             for value in values:
                 # Find the datapoints with each feature value
-                newData, newClasses = [], []
+                newData, newClasses, newNames  = [], [], []
                 for index, datapoint in enumerate(data):
-                    if datapoint[bestFeature] == value:
+                    if matches(datapoint[bestFeature], value) and value[0] != "<":
                         newDatapoint, newNames = extract_data(bestFeature, datapoint, featureNames)
                         newData.append(newDatapoint)
                         newClasses.append(classes[index])
+                    elif matches(datapoint[bestFeature], value) and value[0] == "<":
+                        newData.append(datapoint)
+                        newClasses.append(classes[index])
+                        newNames = featureNames
                 # Now recurse to the next level
                 subtree = make_tree(
                     newData, newClasses, newNames, maxlevel, level+1, forest)
                 # And on returning, add the subtree on to the tree
                 tree.subtrees.append(DecisionTree(value, subtree))
             return tree
+
+    def matches(datapointVal, checkVal):
+
+        if isinstance(datapointVal, str):
+            return datapointVal == checkVal
+        elif checkVal[0] == "<":
+            return floatLT(datapointVal, float(checkVal[1:]))
+        else:
+            return floatGE(datapointVal, float(checkVal[2:]))
 
     def extract_data(featureIndex, datapoint, featureNames):
         if featureIndex == 0:
@@ -130,20 +171,38 @@ def dDTtree(data, targets, features, **kwargs):
             newNames = np.concatenate([featureNames[:featureIndex], (featureNames[featureIndex+1:])])
         return newdatapoint, newNames
 
+    def get_cutoff_point(data, classes, feature):
+        zipped = [(dp[feature], classes[i]) for i, dp in enumerate(data)]
+        sort_zipped = sorted(zipped, key=lambda x: (x[0], x[1]))
+        prev = sort_zipped[0]
+        boundaries = []
+        for idx, item in enumerate(sort_zipped):
+            if item != prev:
+                boundaries.append(idx)
+            prev = item
+        cutoffGains, cutoffGinis, cutoffPoints = np.zeros(len(boundaries)), np.zeros(len(boundaries)), np.zeros(len(boundaries))
+        for cIdx, boundary in enumerate(boundaries):
+            testCutoff = sort_zipped[boundary][0]
+            cutoffGains[cIdx], cutoffGinis[cIdx] = calc_info_gain(data, classes, feature, testCutoff)
+            cutoffPoints[cIdx] = testCutoff
+        return cutoffPoints[np.argmin(cutoffGains)]
+
     def calc_entropy(p):
         return -p*np.log2(p) if p != 0 else 0
 
-    def calc_info_gain(data, classes, feature):
+    def calc_info_gain(data, classes, feature, cutoffPoint=None):
         gain, ggain = 0, 0
-
-        values = [*set([datapoint[feature] for datapoint in data])]
+        if cutoffPoint is None:
+            values = [*set([datapoint[feature] for datapoint in data])]
+        else:
+            values = [">=" + str(cutoffPoint), "<" + str(cutoffPoint)]
 
         featureCounts, entropy, gini = np.zeros(len(values)), np.zeros(len(values)), np.zeros(len(values))
 
         for valueIndex, value in enumerate(values):
             newClasses = []
             for dataIndex, datapoint in enumerate(data):
-                if datapoint[feature] == value:
+                if matches(datapoint[feature], value):
                     featureCounts[valueIndex] += 1
                     newClasses.append(classes[dataIndex])
 
@@ -173,188 +232,3 @@ def dDTtree(data, targets, features, **kwargs):
     dTree = make_tree(data, classes, featureNames, maxlevel, level, forest)
 
     return lambda x: classify(dTree, x)
-
-
-def dtree(filename, **kwargs):
-
-    def classify(tree, datapoint):
-        nonlocal featureNames
-        if type(tree) == type("string"):
-            # Have reached a leaf
-            return tree
-        else:
-            a = list(tree.keys())[0]
-            for i in range(len(featureNames)):
-                if featureNames[i] == a:
-                    break
-            try:
-                t = tree[a][datapoint[i]]
-                return classify(t, datapoint)
-            except:
-                return None
-
-    def classifyAll(tree, data):
-        results = []
-        for i in range(len(data)):
-            results.append(classify(tree, data[i]))
-        return results
-
-    def read_data(filename):
-        fid = open(filename, "r")
-        data = []
-        d = []
-        for line in fid.readlines():
-            d.append(line.strip())
-        for d1 in d:
-            data.append(d1.split(","))
-        fid.close()
-
-        featureNames = data[0]
-        featureNames = featureNames[:-1]
-        data = data[1:]
-        classes = []
-        for d in range(len(data)):
-            classes.append(data[d][-1])
-            data[d] = data[d][:-1]
-
-        return data, classes, featureNames
-
-    def make_tree(data, classes, featureNames, maxlevel=-1, level=0, forest=0):
-        """ The main function, which recursively constructs the tree"""
-        nData = len(data)
-        nFeatures = len(data[0])
-        # List the possible classe
-        newClasses = []
-        for aclass in classes:
-            if newClasses.count(aclass) == 0:
-                newClasses.append(aclass)
-        # Compute the default class (and total entropy)
-        frequency = np.zeros(len(newClasses))
-        totalEntropy = 0
-        totalGini = 0
-        index = 0
-        for aclass in newClasses:
-            frequency[index] = classes.count(aclass)
-            totalEntropy += calc_entropy(float(frequency[index])/nData)
-            totalGini += (float(frequency[index])/nData)**2
-            index += 1
-        totalGini = 1 - totalGini
-        default = classes[np.argmax(frequency)]
-        if nData == 0 or nFeatures == 0 or (maxlevel >= 0 and level > maxlevel):
-            # Have reached an empty branch
-            return default
-        elif classes.count(classes[0]) == nData:
-            # Only 1 class remains
-            return classes[0]
-        else:
-            # Choose which feature is best
-            gain = np.zeros(nFeatures)
-            ggain = np.zeros(nFeatures)
-            featureSet = range(nFeatures)
-            if forest != 0:
-                np.random.shuffle(featureSet)
-                featureSet = featureSet[0:forest]
-            for feature in featureSet:
-                g, gg = calc_info_gain(data, classes, feature)
-                gain[feature] = totalEntropy - g
-                ggain[feature] = totalGini - gg
-            bestFeature = np.argmax(gain)
-            tree = {featureNames[bestFeature]: {}}
-            # List the values that bestFeature can take
-            values = []
-            for datapoint in data:
-                if datapoint[bestFeature] not in values:
-                    values.append(datapoint[bestFeature])
-            for value in values:
-                # Find the datapoints with each feature value
-                newData = []
-                newClasses = []
-                index = 0
-                for datapoint in data:
-                    if datapoint[bestFeature] == value:
-                        if bestFeature == 0:
-                            newdatapoint = datapoint[1:]
-                            newNames = featureNames[1:]
-                        elif bestFeature == nFeatures:
-                            newdatapoint = datapoint[:-1]
-                            newNames = featureNames[:-1]
-                        else:
-                            newdatapoint = datapoint[:bestFeature]
-                            newdatapoint.extend(datapoint[bestFeature+1:])
-                            newNames = featureNames[:bestFeature]
-                            newNames.extend(featureNames[bestFeature+1:])
-                        newData.append(newdatapoint)
-                        newClasses.append(classes[index])
-                    index += 1
-                # Now recurse to the next level
-                subtree = make_tree(
-                    newData, newClasses, newNames, maxlevel, level+1, forest)
-                # And on returning, add the subtree on to the tree
-                tree[featureNames[bestFeature]][value] = subtree
-
-            return tree
-
-    def calc_entropy(p):
-        return -p*np.log2(p) if p != 0 else 0
-
-    def calc_info_gain(data, classes, feature):
-        gain = 0
-        ggain = 0
-
-        values = []
-        for datapoint in data:
-            if datapoint[feature] not in values:
-                values.append(datapoint[feature])
-
-        featureCounts = np.zeros(len(values))
-        entropy = np.zeros(len(values))
-        gini = np.zeros(len(values))
-
-        valueIndex = 0
-
-        for value in values:
-            dataIndex = 0
-            newClasses = []
-            for datapoint in data:
-                if datapoint[feature] == value:
-                    featureCounts[valueIndex] += 1
-                    newClasses.append(classes[dataIndex])
-                dataIndex += 1
-
-            classValues = []
-            for class_ in newClasses:
-                if classValues.count(class_) == 0:
-                    classValues.append(class_)
-
-            classCounts = np.zeros(len(classValues))
-            classIndex = 0
-            for classValue in classValues:
-                for class_ in newClasses:
-                    if class_ == classValue:
-                        classCounts[classIndex] += 1
-                classIndex += 1
-
-            for classIndex in range(len(classValues)):
-                entropy[valueIndex] += calc_entropy(
-                    float(classCounts[classIndex])/np.sum(classCounts))
-                gini[valueIndex] += (float(classCounts[classIndex]
-                                           )/np.sum(classCounts))**2
-
-            gain += float(featureCounts[valueIndex]) / \
-                nData * entropy[valueIndex]
-            ggain += float(featureCounts[valueIndex])/nData * gini[valueIndex]
-            valueIndex += 1
-
-        return gain, 1-ggain
-
-    maxlevel = kwargs.get("maxlevel", -1)
-    level = kwargs.get("level", 0)
-    forest = kwargs.get("forest", 0)
-
-    data, classes, featureNames = read_data(filename)
-
-    nData = len(data)
-
-    tree = make_tree(data, classes, featureNames, maxlevel, level, forest)
-
-    return lambda x: classify(tree, x)

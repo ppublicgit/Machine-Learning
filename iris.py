@@ -10,7 +10,7 @@ from Learning.mlp import mlp
 from Learning.rbf import rbf
 from Learning.svm import svm
 from Learning.probabilistic_learning import knn
-from Learning.decision_trees import dtreeID3
+from Learning.decision_trees import dtree
 
 def read_data():
     df = pd.read_csv(os.path.join(os.getcwd(), "Data/iris.data"), header=None)
@@ -191,7 +191,7 @@ def run_dtree(inputs, targets, features, nRuns=5):
         x_out, y_out = x_out[:,0], y_out[:, 0]
 
         start = time()
-        decisionTree = dtreeID3(x_in, x_out, features)
+        decisionTree = dtree(x_in, x_out, features, treetype="ID3")
 
         predict = np.empty((len(y_out), 1), dtype=int)
         for idx, val in enumerate(y_in):

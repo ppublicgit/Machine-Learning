@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from Learning.decision_trees import dtreeID3, dtreeCART
+from Learning.decision_trees import dtree#ID3, dtreeCART
 
 
 def sse(actual, predicted):
@@ -12,22 +12,22 @@ def sse(actual, predicted):
     return ret
 
 if __name__ == "__main__":
-    #filename = os.path.join(os.getcwd(), "Data/party.data")
-    #
-    #df = pd.read_csv(filename)
-    #features = df.columns[:-1]
-    #targets = df.iloc[:,-1].values
-    #data = df.iloc[:, :-1].to_numpy()
-    #
-    #classify = dtreeID3(data, targets, features)
-    #
-    #datapoint = ["Urgent", "Yes", "No"]
-    #
-    #print(f"New DTREE ID3: {classify(datapoint)}")
-    #
-    #classify = dtreeCART(data, targets, features)
-    #
-    #print(f"New DTREE CART: {classify(datapoint)}")
+    filename = os.path.join(os.getcwd(), "Data/party.data")
+
+    df = pd.read_csv(filename)
+    features = df.columns[:-1]
+    targets = df.iloc[:,-1].values
+    data = df.iloc[:, :-1].to_numpy()
+
+    classify = dtree(data, targets, features, treetype="ID3")
+
+    datapoint = ["Urgent", "Yes", "No"]
+
+    print(f"New DTREE ID3: {classify(datapoint)}")
+
+    classify = dtree(data, targets, features, treetype="CART")
+
+    print(f"New DTREE CART: {classify(datapoint)}")
 
     df = pd.read_csv(os.path.join(os.getcwd(), "Data/machine.data"), header=None)
 
@@ -54,11 +54,13 @@ if __name__ == "__main__":
     x_in = np.concatenate((x_in, v_in))
     x_out = np.concatenate((x_out, v_out))
 
-    classify = dtreeCART(x_in, x_out, features, outtype="regression")
+    classify = dtree(x_in, x_out, features, outtype="regression")
 
     predictions = []
     for i in range(len(y_in)):
         predictions.append(classify(y_in[i]))
+
+    print(classify(None))
 
     print(f"Paper Perf: {sse(y_out, comp_out)}")
     print(f"DTree Perf: {sse(y_out, predictions)}")

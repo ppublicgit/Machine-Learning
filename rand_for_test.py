@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from Learning.decision_trees import dtree
+from Learning.random_forest import randomForest
 
 
 def sse(actual, predicted):
@@ -19,15 +19,15 @@ if __name__ == "__main__":
     targets = df.iloc[:,-1].values
     data = df.iloc[:, :-1].to_numpy()
 
-    classify = dtree(data, targets, features, treetype="ID3", weighted=True)
+    classify = randomForest(data, targets, features, 5, maxlevel=2)
 
-    datapoint = ["Urgent", "Yes", "No"]
+    datapoint = [["Urgent", "Yes", "No"]]
 
-    print(f"New DTREE ID3: {classify(datapoint)}")
+    print(f"Rand Forest 5 Trees 2 Maxlevel: {classify(datapoint)[0]}")
 
-    classify = dtree(data, targets, features, treetype="CART", weighted=True)
+    classify = randomForest(data, targets, features, 10, maxlevel=1)
 
-    print(f"New DTREE CART: {classify(datapoint)}")
+    print(f"Rand Forest 10 Trees 1 Maxlevel: {classify(datapoint)[0]}")
 
     df = pd.read_csv(os.path.join(os.getcwd(), "Data/machine.data"), header=None)
 
@@ -54,13 +54,9 @@ if __name__ == "__main__":
     x_in = np.concatenate((x_in, v_in))
     x_out = np.concatenate((x_out, v_out))
 
-    classify = dtree(x_in, x_out, features, outtype="regression", weighted=True)
+    classify = randomForest(x_in, x_out, features, 10, maxlevel=5, outtype="regression")
 
-    predictions = []
-    for i in range(len(y_in)):
-        predictions.append(classify(y_in[i]))
-
-    print(classify(None))
+    predictions = classify(y_in)
 
     print(f"Paper Perf: {sse(y_out, comp_out)}")
     print(f"DTree Perf: {sse(y_out, predictions)}")

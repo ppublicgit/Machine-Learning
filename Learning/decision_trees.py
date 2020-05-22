@@ -80,9 +80,18 @@ class DecisionTree:
 
 def dtree(data, targets, features, **kwargs):
 
-    def classify(tree, datapoint):
-        if datapoint is None:
+    def classify(tree, data):
+        if data is None:
             return tree
+        ndarrayData = np.array(data)
+        if len(ndarrayData.shape) == 1:
+            return classifySingle(tree, data)
+        elif ndarrayData.shape[1] == 1:
+            return classifySingle(tree, data[:, 0])
+        else:
+            return classifyAll(tree, data)
+
+    def classifySingle(tree, datapoint):
         if tree is None:
             return None
         elif tree.isLeaf():
@@ -94,6 +103,12 @@ def dtree(data, targets, features, **kwargs):
             subtree = tree.subtree(datapoint[idx])
             return classify(subtree, datapoint)
 
+    def classifyAlll(tree, data):
+        results = []
+        for i in range(data.shape[0]):
+            results.append(classifySingle(tree, data[i]))
+        return results
+
     def count(lst, obj):
         count = 0
         for item in lst:
@@ -101,7 +116,7 @@ def dtree(data, targets, features, **kwargs):
                 count += 1
         return count
 
-    def make_tree(data, classes, featureNames, maxlevel=-1, level=0, forest=0):
+    def make_tree(data, weights, classes, featureNames, maxlevel=-1, level=0, forest=0):
         """ The main function, which recursively constructs the tree"""
         if len(data) == 0:
             return DecisionTree(None, [])
@@ -121,17 +136,17 @@ def dtree(data, targets, features, **kwargs):
             # Choose which feature is best
             gain, cutoffPoints = np.zeros(nFeatures), [None]*nFeatures
             featureSet = [*range(nFeatures)]
-            if forest != 0:
+            if forest > 0:
                 np.random.shuffle(featureSet)
                 featureSet = featureSet[0:forest]
             for featureIndex in featureSet:
                 if treeType == "ID3":
                     cutoffPoint = None
                 elif isinstance(data[0][featureIndex], str):
-                    cutoffPoint = get_cutoff_choice(data, classes, featureIndex)
+                    cutoffPoint = get_cutoff_choice(data, weights, classes, featureIndex)
                 else:
-                    cutoffPoint = get_cutoff_point(data, classes, featureIndex)
-                gain[featureIndex] = totalGain - calc_info_gain(data, classes, featureIndex, cutoffPoint)
+                    cutoffPoint = get_cutoff_point(data, weights, classes, featureIndex)
+                gain[featureIndex] = totalGain - calc_info_gain(data, weights, classes, featureIndex, cutoffPoint)
                 cutoffPoints[featureIndex] = cutoffPoint
             bestFeature = np.argmax(gain)
             binary = True
@@ -146,21 +161,27 @@ def dtree(data, targets, features, **kwargs):
             # List the values that bestFeature can take
             for value in values:
                 # Find the datapoints with each feature value
-                newData, newClasses, newNames  = [], [], []
+                newData, newWeights, newClasses, newNames  = [], [], [], []
                 for index, datapoint in enumerate(data):
                     if (binary or value[:4] != "Not:") and matches(datapoint[bestFeature], value):
-                        newDatapoint, newNames = extract_data(bestFeature, datapoint, featureNames)
+                        newDatapoint, newWeight, newNames = extract_data(bestFeature, datapoint, featureNames, weights[index])
                         newData.append(newDatapoint)
+                        if weighted:
+                            newWeights = np.concatenate((newWeights, newWeight))
                         newClasses.append(classes[index])
                     elif matches(datapoint[bestFeature], value):
                         newData.append(datapoint)
+                        if weighted:
+                            newWeights = np.concatenate((newWeights, weights[index]))
                         newClasses.append(classes[index])
                         newNames = copy(featureNames)
                 # Now recurse to the next level
                 if outtype == "regression" and check_coeff_variation(newClasses):
                     return DecisionTree(np.mean(newClasses), [])
+                if not weighted:
+                    newWeights = weights
                 subtree = make_tree(
-                    newData, newClasses, newNames, maxlevel, level+1, forest)
+                    newData, newWeights, newClasses, newNames, maxlevel, level+1, forest)
                 # And on returning, add the subtree on to the tree
                 tree.subtrees.append(DecisionTree(value, subtree))
             return tree
@@ -186,19 +207,27 @@ def dtree(data, targets, features, **kwargs):
         else:
             return floatGE(datapointVal, float(checkVal[2:]))
 
-    def extract_data(featureIndex, datapoint, featureNames):
+    def extract_data(featureIndex, datapoint, featureNames, weights):
         if featureIndex == 0:
             newdatapoint = datapoint[1:]
+            if weighted:
+                newWeight = weights[1:]
             newNames = featureNames[1:]
         elif featureIndex == len(datapoint):
             newdatapoint = datapoint[:-1]
+            if weighted:
+                newWeight = weights[:-1]
             newNames = featureNames[:-1]
         else:
             newdatapoint = np.concatenate([datapoint[:featureIndex], datapoint[featureIndex+1:]])
+            if weighted:
+                newWeight = np.concatenate([weights[:featureIndex], weights[featureIndex+1:]])
             newNames = np.concatenate([featureNames[:featureIndex], (featureNames[featureIndex+1:])])
-        return newdatapoint, newNames
+        if not weighted:
+            newWeight = weights
+        return newdatapoint, newWeight, newNames
 
-    def get_cutoff_point(data, classes, feature):
+    def get_cutoff_point(data, weights, classes, feature):
         if outtype == "classification":
             zipped = [(dp[feature], classes[i]) for i, dp in enumerate(data)]
             sort_zipped = sorted(zipped, key=lambda x: (x[0], x[1]))
@@ -224,18 +253,18 @@ def dtree(data, targets, features, **kwargs):
         cutoffGain, cutoffPoints = np.zeros(len(boundaries)), np.zeros(len(boundaries))
         for cIdx, boundary in enumerate(boundaries):
             testCutoff = sort_zipped[boundary][0]
-            cutoffGain[cIdx] = calc_info_gain(data, classes, feature, testCutoff)
+            cutoffGain[cIdx] = calc_info_gain(data, weights, classes, feature, testCutoff)
             cutoffPoints[cIdx] = testCutoff
         return cutoffPoints[np.argmin(cutoffGain)]
 
-    def get_cutoff_choice(data, classes, feature):
+    def get_cutoff_choice(data, weights, classes, feature):
         choices = [dp[feature] for dp in data]
         choices = [*set(choices)]
         if len(choices) <= 2:
             return ""
         cutoffGain, options = np.zeros(len(choices)), np.zeros(len(choices))
         for cIdx, choice in enumerate(choices):
-            cutoffGain[cIdx] = calc_info_gain(data, classes, feature, choice)
+            cutoffGain[cIdx] = calc_info_gain(data, weights, classes, feature, choice)
         return choices[np.argmin(cutoffGain)]
 
     def calc_total_gain(classes):
@@ -265,7 +294,9 @@ def dtree(data, targets, features, **kwargs):
             raise ValueError("Invalid treeType outtype combination")
         return totalGain, frequency
 
-    def calc_info_gain(data, classes, feature, cutoff=None):
+    def calc_info_gain(data, weights, classes, feature, cutoff=None):
+        if outtype == "classification" and treeType == "CART" and weighted:
+            return calc_info_gini(data, weights, classes, feature, cutoff)
         if outtype == "classification" and treeType == "CART":
             return calc_info_gini(data, classes, feature, cutoff)
         elif outtype == "classification" and treeType == "ID3":
@@ -330,6 +361,38 @@ def dtree(data, targets, features, **kwargs):
             gain += float(featureCounts[valueIndex])/nData * gini[valueIndex]
         return 1-gain
 
+    def calc_info_gini_weights(data, weights, classes, feature, cutoff=None):
+        gain = 0
+        if isinstance(cutoff, str):
+            values = [*set([datapoint[feature] for datapoint in data])]
+            if len(values) > 2:
+                values = [cutoff, "Not:"+cutoff]
+        else:
+            values = [">=" + str(cutoff), "<" + str(cutoff)]
+
+        featureCounts, gini = np.zeros(len(values)), np.zeros(len(values))
+
+        valueweight = np.zeros((len(values), weights.shape[1]), dtype=float)
+        for valueIndex, value in enumerate(values):
+            newClasses = []
+            for dataIndex, datapoint in enumerate(data):
+                if matches(datapoint[feature], value):
+                    featureCounts[valueIndex] += 1
+                    newClasses.append(classes[dataIndex])
+                    valueWeights[valueIndex] += weights[dataIndex]
+        valueweight /= sum(valueweight)
+
+        for valueIndex, value in enumerate(values):
+
+            classValues, classCounts = np.unique(newClasses, return_counts=True)
+
+            for classIndex in range(len(classValues)):
+                gini[valueIndex] += (float(classCounts[classIndex]
+                                           )/np.sum(classCounts))**2
+
+            gain += float(featureCounts[valueIndex])/nData * gini[valueIndex] * valueweight[valueIndex]
+        return 1-gain
+
     def calc_entropy(p):
         return -p*np.log2(p) if p != 0 else 0
 
@@ -340,7 +403,9 @@ def dtree(data, targets, features, **kwargs):
         else:
             values = [">=" + str(cutoffPoint), "<" + str(cutoffPoint)]
 
-        featureCounts, entropy, gini = np.zeros(len(values)), np.zeros(len(values)), np.zeros(len(values))
+        featureCounts, entropy = np.zeros(len(values)), np.zeros(len(values))
+
+        valueweight = np.zeros((len(values), weights.shape[1]), dtype=float)
 
         for valueIndex, value in enumerate(values):
             newClasses = []
@@ -365,6 +430,8 @@ def dtree(data, targets, features, **kwargs):
     minCoeffVar = kwargs.get("coeff_var", 5.)
     treeType = kwargs.get("treeType", "CART")
     minData = kwargs.get("min_cutoff", -1)
+    weights = kwargs.get("weights", None)
+
 
     if outtype == "regression" and not treeType == "CART":
         raise ValueError("Only treeType CART supports regression")
@@ -375,9 +442,17 @@ def dtree(data, targets, features, **kwargs):
 
     data, classes, featureNames = data, targets, features
 
+    if weights is None:
+        weighted = False
+        weights = np.zeros((data.shape[0]))
+    else:
+        weighted = True
+        if weights.shape != data.shape:
+            raise ValueError("Input weights invalid shape. Should match shape of data")
+
     nData = len(data)
     level = 0
 
-    dTree = make_tree(data, classes, featureNames, maxlevel, level, forest)
+    dTree = make_tree(data, weights, classes, featureNames, maxlevel, level, forest)
 
     return lambda x: classify(dTree, x)

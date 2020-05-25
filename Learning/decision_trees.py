@@ -103,7 +103,7 @@ def dtree(data, targets, features, **kwargs):
             subtree = tree.subtree(datapoint[idx])
             return classify(subtree, datapoint)
 
-    def classifyAlll(tree, data):
+    def classifyAll(tree, data):
         results = []
         for i in range(data.shape[0]):
             results.append(classifySingle(tree, data[i]))
@@ -167,21 +167,21 @@ def dtree(data, targets, features, **kwargs):
                         newDatapoint, newWeight, newNames = extract_data(bestFeature, datapoint, featureNames, weights[index])
                         newData.append(newDatapoint)
                         if weighted:
-                            newWeights = np.concatenate((newWeights, newWeight))
+                            newWeights.append(newWeight)
                         newClasses.append(classes[index])
                     elif matches(datapoint[bestFeature], value):
                         newData.append(datapoint)
                         if weighted:
-                            newWeights = np.concatenate((newWeights, weights[index]))
+                            newWeights.append(newWeight)
                         newClasses.append(classes[index])
-                        newNames = copy(featureNames)
+                        newNames = featureNames
                 # Now recurse to the next level
                 if outtype == "regression" and check_coeff_variation(newClasses):
                     return DecisionTree(np.mean(newClasses), [])
                 if not weighted:
                     newWeights = weights
                 subtree = make_tree(
-                    newData, newWeights, newClasses, newNames, maxlevel, level+1, forest)
+                    np.array(newData), np.array(newWeights), np.array(newClasses), newNames, maxlevel, level+1, forest)
                 # And on returning, add the subtree on to the tree
                 tree.subtrees.append(DecisionTree(value, subtree))
             return tree
@@ -296,7 +296,7 @@ def dtree(data, targets, features, **kwargs):
 
     def calc_info_gain(data, weights, classes, feature, cutoff=None):
         if outtype == "classification" and treeType == "CART" and weighted:
-            return calc_info_gini(data, weights, classes, feature, cutoff)
+            return calc_info_gini_weights(data, weights, classes, feature, cutoff)
         if outtype == "classification" and treeType == "CART":
             return calc_info_gini(data, classes, feature, cutoff)
         elif outtype == "classification" and treeType == "ID3":
@@ -371,20 +371,21 @@ def dtree(data, targets, features, **kwargs):
             values = [">=" + str(cutoff), "<" + str(cutoff)]
 
         featureCounts, gini = np.zeros(len(values)), np.zeros(len(values))
-
-        valueweight = np.zeros((len(values), weights.shape[1]), dtype=float)
+        valueweight = np.zeros((len(values), 1), dtype=float)
+        newClasses = []
         for valueIndex, value in enumerate(values):
-            newClasses = []
+            valueClasses =[]
             for dataIndex, datapoint in enumerate(data):
                 if matches(datapoint[feature], value):
                     featureCounts[valueIndex] += 1
-                    newClasses.append(classes[dataIndex])
-                    valueWeights[valueIndex] += weights[dataIndex]
+                    valueClasses.append(classes[dataIndex])
+                    valueweight[valueIndex] += sum(weights[dataIndex])
+            newClasses.append(valueClasses)
         valueweight /= sum(valueweight)
 
         for valueIndex, value in enumerate(values):
 
-            classValues, classCounts = np.unique(newClasses, return_counts=True)
+            classValues, classCounts = np.unique(newClasses[valueIndex], return_counts=True)
 
             for classIndex in range(len(classValues)):
                 gini[valueIndex] += (float(classCounts[classIndex]
@@ -404,8 +405,6 @@ def dtree(data, targets, features, **kwargs):
             values = [">=" + str(cutoffPoint), "<" + str(cutoffPoint)]
 
         featureCounts, entropy = np.zeros(len(values)), np.zeros(len(values))
-
-        valueweight = np.zeros((len(values), weights.shape[1]), dtype=float)
 
         for valueIndex, value in enumerate(values):
             newClasses = []
